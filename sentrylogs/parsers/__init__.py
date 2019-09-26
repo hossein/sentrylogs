@@ -26,6 +26,10 @@ class Parser(object):  # pylint: disable=useless-object-inheritance
             "logger": self.logger,
         }
 
+        self.threshold_times = 2
+        self.current_times = 0
+        self.lines_buffer = []
+
     def clear_attributes(self):
         """Reset attributes"""
         self.message = None
@@ -50,14 +54,44 @@ class Parser(object):  # pylint: disable=useless-object-inheritance
             self.clear_attributes()
 
             if line is not None:
-                self.parse(line)
-                send_message(
-                    self.message,
-                    self.level,
-                    self.data,
-                )
+                if self.is_new_entry(line):
+                    self.send_buffer()
+
+                # Append the new entry, or append its next lines to it
+                self.lines_buffer.append(line)
             else:
-                time.sleep(1)
+                if self.current_times < self.threshold_times:
+                    # Check for new lines at a higher speed
+                    time.sleep(1)
+                    self.current_times += 1
+                else:
+                    # if not new lines found at self.threshold_times, send the previous message
+                    self.send_buffer()
+                    time.sleep(10)
+
+    def send_buffer(self):
+        """
+        Parse and send the collected lines buffer if its not empty and clear it
+        """
+        if not self.lines_buffer:
+            return
+
+        self.parse(self.lines_buffer)
+
+        self.current_times = 0
+        self.lines_buffer = []
+
+        send_message(
+            self.message,
+            self.level,
+            self.data,
+        )
+
+    def is_new_entry(self, line):
+        """
+        Must be overridden by the subclass and return true if the line marks the start of a new entry.
+        """
+        raise NotImplementedError('is_new_entry() method must be implemented')
 
     def parse(self, line):
         """

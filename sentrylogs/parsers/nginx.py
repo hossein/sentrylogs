@@ -41,21 +41,36 @@ class Nginx(Parser):
         """ Get the Sentry log level given the nginx log level"""
         return self.nginx_to_sentry[level]
 
-    def parse(self, line):
-        """Parse a line of the Nginx error log"""
-        print(line, file=sys.stderr)
+    def is_new_entry(self, line):
+        if re.match(self.pattern, line):
+            return True
+        return False
+
+    def parse(self, lines):
+        """Parses some lines of the Nginx error log"""
+        print('\n'.join(lines), file=sys.stderr)
         sys.stderr.flush()
 
-        csv_list = line.split(",")
+        if len(lines) == 1:
+            csv_list = lines[0].split(",")
+            start_fields = csv_list.pop(0)
+            message_rest = ''
+        else:
+            start_fields = lines[0]
+            csv_list = lines[-1].split(",")
+            message_rest = '\n' + '\n'.join(lines[1:-1]) + '\n' + csv_list.pop(0)
 
-        regex = re.match(self.pattern, csv_list.pop(0))
+        regex = re.match(self.pattern, start_fields)
         self.data["date"] = regex.group("date")
         self.data["time"] = regex.group("time")
         self.level = self.get_sentry_log_level(regex.group("level"))
         self.data["pid"] = regex.group("pid")
         self.data["tid"] = regex.group("tid")
         self.data["cid"] = regex.group("cid")
-        self.message = regex.group("message")
+
+        self.data["fullmsg"] = regex.group("message") + message_rest
+
+        self.message = regex.group("message").replace('FastCGI sent in stderr: "', '').replace('PHP message: ', '')
 
         for item in csv_list:
             key_value_pair = item.split(":", 1)
